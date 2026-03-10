@@ -164,6 +164,12 @@ In Labs 2–4 you implement them inside cpu_step using switch-case.
 #define OP_CALL    0x32
 #define OP_RET     0x33
 
+/* Lab 5 extensions */
+#define OP_INC 0x40  /* inc  ra : ra = ra + 1 */
+#define OP_DEC 0x41  /* dec  ra : ra = ra - 1 */
+#define OP_CLR 0x42  /* clr  ra : ra = 0 */
+#define OP_OUTC 0x50 /* outc ra : print ra as a character */
+
 /* =========================
    Memory (Lab 1)
    ========================= */
@@ -175,53 +181,53 @@ static uint8_t memory[MEM_SIZE];
    Note: printf prints to the terminal.
 */
 static void die(const char *msg) {
-    printf("%s\n", msg);
-    exit(1);
+  printf("%s\n", msg);
+  exit(1);
 }
 
 /* Called when a program tries to read/write outside memory.
    This is like a "segmentation fault" in a real machine.
 */
 static void memory_error(uint16_t addr) {
-    printf("MEMORY ERROR at 0x%04X\n", addr);
-    exit(1);
+  printf("MEMORY ERROR at 0x%04X\n", addr);
+  exit(1);
 }
 
 static uint8_t mem_read8(uint16_t addr) {
-    if(addr >= MEM_SIZE) {
-        memory_error(addr);
-    }
-    return memory[addr];
+  if (addr >= MEM_SIZE) {
+    memory_error(addr);
+  }
+  return memory[addr];
 }
 
 static void mem_write8(uint16_t addr, uint8_t v) {
-    if(addr >= MEM_SIZE) {
-        memory_error(addr);
-    }
-    memory[addr] = v;
+  if (addr >= MEM_SIZE) {
+    memory_error(addr);
+  }
+  memory[addr] = v;
 }
 
 static uint16_t mem_read16(uint16_t addr) {
-    if(addr >= MEM_SIZE || addr + 1 >= MEM_SIZE) {
-        memory_error(addr);
-    }
-    return memory[addr] | (memory[addr + 1] << 8);
+  if (addr >= MEM_SIZE || addr + 1 >= MEM_SIZE) {
+    memory_error(addr);
+  }
+  return memory[addr] | (memory[addr + 1] << 8);
 }
 
 static void mem_write16(uint16_t addr, uint16_t v) {
-    if(addr >= MEM_SIZE || addr + 1 >= MEM_SIZE) {
-        memory_error(addr);
-    }
-    memory[addr] = v & 0x00FF;
-    memory[addr + 1] = (v >> 8) & 0x00FF;
+  if (addr >= MEM_SIZE || addr + 1 >= MEM_SIZE) {
+    memory_error(addr);
+  }
+  memory[addr] = v & 0x00FF;
+  memory[addr + 1] = (v >> 8) & 0x00FF;
 }
 
 /* =========================
    I/O device (Lab 4)
    ========================= */
 #if defined(__unix__) || defined(__APPLE__)
-#include <unistd.h>
 #include <sys/select.h>
+#include <unistd.h>
 #define POSIX_INPUT 1
 #else
 #define POSIX_INPUT 0
@@ -235,100 +241,100 @@ static uint8_t last_key = 0;
 static int key_available = 0;
 
 static uint8_t to_upper(uint8_t c) {
-    if (c >= 'a' && c <= 'z') return (uint8_t)(c - 'a' + 'A');
-    return c;
+  if (c >= 'a' && c <= 'z')
+    return (uint8_t)(c - 'a' + 'A');
+  return c;
 }
 
 static void io_init(void) {
-    tick_counter = 0;
-    script_input = NULL;
-    script_pos = 0;
-    last_key = 0;
-    key_available = 0;
+  tick_counter = 0;
+  script_input = NULL;
+  script_pos = 0;
+  last_key = 0;
+  key_available = 0;
 }
 
 static void io_set_script(const char *s) {
-    script_input = s;
-    script_pos = 0;
-    last_key = 0;
-    key_available = 0;
+  script_input = s;
+  script_pos = 0;
+  last_key = 0;
+  key_available = 0;
 }
 
 /* Called once per CPU step */
 static void io_tick(void) {
-    tick_counter++;
+  tick_counter++;
 
-    /* Scripted input first (deterministic) */
-    if (script_input != NULL && !key_available) {
-        char c = script_input[script_pos];
-        if (c != '\0') {
-            last_key = to_upper((uint8_t)c);
-            key_available = 1;
-            script_pos++;
-            return;
-        }
+  /* Scripted input first (deterministic) */
+  if (script_input != NULL && !key_available) {
+    char c = script_input[script_pos];
+    if (c != '\0') {
+      last_key = to_upper((uint8_t)c);
+      key_available = 1;
+      script_pos++;
+      return;
     }
+  }
 
 #if POSIX_INPUT
-    /* Non-blocking live input: only read if stdin is ready */
-    if (!key_available) {
-        fd_set set;
-        struct timeval tv;
-        FD_ZERO(&set);
-        FD_SET(STDIN_FILENO, &set);
-        tv.tv_sec = 0;
-        tv.tv_usec = 0;
+  /* Non-blocking live input: only read if stdin is ready */
+  if (!key_available) {
+    fd_set set;
+    struct timeval tv;
+    FD_ZERO(&set);
+    FD_SET(STDIN_FILENO, &set);
+    tv.tv_sec = 0;
+    tv.tv_usec = 0;
 
-        int ready = select(STDIN_FILENO + 1, &set, NULL, NULL, &tv);
-        if (ready > 0 && FD_ISSET(STDIN_FILENO, &set)) {
-            unsigned char c = 0;
-            ssize_t n = read(STDIN_FILENO, &c, 1);
-            if (n == 1) {
-                if (c == '\n' || c == '\r') return;
-                last_key = to_upper((uint8_t)c);
-                key_available = 1;
-            }
-        }
+    int ready = select(STDIN_FILENO + 1, &set, NULL, NULL, &tv);
+    if (ready > 0 && FD_ISSET(STDIN_FILENO, &set)) {
+      unsigned char c = 0;
+      ssize_t n = read(STDIN_FILENO, &c, 1);
+      if (n == 1) {
+        if (c == '\n' || c == '\r')
+          return;
+        last_key = to_upper((uint8_t)c);
+        key_available = 1;
+      }
     }
+  }
 #else
-    /* Non-POSIX systems: use --script for input. */
-    (void)0;
+  /* Non-POSIX systems: use --script for input. */
+  (void)0;
 #endif
 }
 
 /* TODO (Lab 4): implement memory-mapped input reads */
 static uint8_t io_read8(uint16_t addr) {
-    switch (addr)
-    {
-        case IO_TICK:
-            return tick_counter & 0x00FF;
-        case IO_STATUS:
-            return key_available ? 1 : 0;
-        case IO_KEY:
-            if (key_available) {
-                key_available = 0;
-                return last_key;
-            } else {
-                return 0;
-            }
-        default:
-            break;
+  switch (addr) {
+  case IO_TICK:
+    return tick_counter & 0x00FF;
+  case IO_STATUS:
+    return key_available ? 1 : 0;
+  case IO_KEY:
+    if (key_available) {
+      key_available = 0;
+      return last_key;
+    } else {
+      return 0;
     }
+  default:
+    break;
+  }
 }
 
 /* TODO (Lab 4): implement memory-mapped output writes */
 static void io_write8(uint16_t addr, uint8_t v) {
-    switch (addr)
-    {
-        case IO_PUTCHAR:
-            putchar(v);
-            break;
-        case IO_CLEAR:
-            printf("\033[2J\033[H");
-            break;
-        default:
-            break;
-    }
+  switch (addr) {
+  case IO_PUTCHAR:
+    putchar(v);
+    break;
+  case IO_CLEAR:
+    printf("\033[2J\033[H");
+    break;
+  default:
+    break;
+  }
 }
 
 /* =========================
@@ -341,44 +347,45 @@ static void io_write8(uint16_t addr, uint8_t v) {
    - zf: zero flag (used by JE/JNE)
 */
 typedef struct {
-    uint16_t pc;      /* program counter (address of next instruction) */
-    uint16_t sp;      /* stack pointer */
-    uint16_t r[4];    /* R0..R3 */
-    uint8_t zf;       /* zero flag */
-    int halted;       /* 1 if HALT executed */
+  uint16_t pc;   /* program counter (address of next instruction) */
+  uint16_t sp;   /* stack pointer */
+  uint16_t r[4]; /* R0..R3 */
+  uint8_t zf;    /* zero flag */
+  int halted;    /* 1 if HALT executed */
 } cpu_t;
 
 /* One decoded instruction (4 bytes). */
 typedef struct {
-    uint8_t op;
-    uint8_t ra;
-    uint8_t b2;
-    uint8_t b3;
+  uint8_t op;
+  uint8_t ra;
+  uint8_t b2;
+  uint8_t b3;
 } instr_t;
 
 static uint16_t u16_from_le(uint8_t lo, uint8_t hi) {
-    return (uint16_t)(lo | ((uint16_t)hi << 8));
+  return (uint16_t)(lo | ((uint16_t)hi << 8));
 }
 
 static void cpu_reset(cpu_t *cpu) {
-    cpu->pc = 0;
-    cpu->sp = SP_INIT;
-    cpu->r[0] = cpu->r[1] = cpu->r[2] = cpu->r[3] = 0;
-    cpu->zf = 0;
-    cpu->halted = 0;
+  cpu->pc = 0;
+  cpu->sp = SP_INIT;
+  cpu->r[0] = cpu->r[1] = cpu->r[2] = cpu->r[3] = 0;
+  cpu->zf = 0;
+  cpu->halted = 0;
 }
 
 static void check_reg(uint8_t r) {
-    if (r > 3) die("Invalid register index (valid: 0..3)");
+  if (r > 3)
+    die("Invalid register index (valid: 0..3)");
 }
 
 static instr_t fetch(cpu_t *cpu) {
-    instr_t in;
-    in.op = mem_read8(cpu->pc + 0);
-    in.ra = mem_read8(cpu->pc + 1);
-    in.b2 = mem_read8(cpu->pc + 2);
-    in.b3 = mem_read8(cpu->pc + 3);
-    return in;
+  instr_t in;
+  in.op = mem_read8(cpu->pc + 0);
+  in.ra = mem_read8(cpu->pc + 1);
+  in.b2 = mem_read8(cpu->pc + 2);
+  in.b3 = mem_read8(cpu->pc + 3);
+  return in;
 }
 
 /* CPU STEP (the heart of the project)
@@ -395,164 +402,240 @@ static instr_t fetch(cpu_t *cpu) {
 */
 /* TODO (Labs 2–5): implement CPU instruction execution */
 static void cpu_step(cpu_t *cpu, int debug) {
-    (void)debug;
+  (void)debug;
 
-    if (cpu->halted) return;
+  if (cpu->halted)
+    return;
 
-    io_tick();
-    instr_t in = fetch(cpu);
+  io_tick();
+  instr_t in = fetch(cpu);
 
-    /* In debug mode, print a simple trace */
-    if (debug) {
-        printf("PC=%04X OP=%02X R0=%04X R1=%04X R2=%04X R3=%04X ZF=%u SP=%04X\n",
-               cpu->pc, in.op, cpu->r[0], cpu->r[1], cpu->r[2], cpu->r[3], cpu->zf, cpu->sp);
-    }
+  /* In debug mode, print a simple trace */
+  if (debug) {
+    printf("PC=%04X OP=%02X R0=%04X R1=%04X R2=%04X R3=%04X ZF=%u SP=%04X\n",
+           cpu->pc, in.op, cpu->r[0], cpu->r[1], cpu->r[2], cpu->r[3], cpu->zf,
+           cpu->sp);
+  }
 
-    /* You will implement this switch gradually:
-       Lab 2: irmovw, addw, cmpw, je/jmp, halt
-       Lab 3: pushw, popw, call, ret
-       Lab 4: byte loads/stores + I/O reads/writes
-       Lab 5: polish + optional stats
-    */
+  /* You will implement this switch gradually:
+     Lab 2: irmovw, addw, cmpw, je/jmp, halt
+     Lab 3: pushw, popw, call, ret
+     Lab 4: byte loads/stores + I/O reads/writes
+     Lab 5: polish + optional stats
+  */
 
-    switch (in.op)
-    {
-        case OP_IRMOVW:
-            cpu->r[in.ra] = u16_from_le(in.b2, in.b3);
-            cpu->zf = (cpu->r[in.ra] == 0) ? 1 : 0;
-            cpu->pc += 4;
-            break;
-        case OP_RRMOVW:
-            uint8_t rb = in.b2;
-            cpu->r[in.ra] = cpu->r[rb];
-            cpu->zf = (cpu->r[in.ra] == 0) ? 1 : 0;
-            cpu->pc += 4;
-        case OP_IRMOVB:
-            cpu->r[in.ra] = in.b3;
-            cpu->zf = (cpu->r[in.ra] == 0) ? 1 : 0;
-            cpu->pc += 4;
-            break;
-        case OP_ADDW:
-            rb = in.b2;
-            cpu->r[rb] = cpu->r[in.ra] + cpu->r[rb];
-            cpu->zf = (cpu->r[rb] == 0) ? 1 : 0;
-            cpu->pc += 4;
-        case OP_SUBW:
-            rb = in.b2;
-            cpu->r[rb] = cpu->r[rb] - cpu->r[in.ra];
-            cpu->zf = (cpu->r[rb] == 0) ? 1 : 0;
-            cpu->pc += 4;
-        case OP_CMPW:
-            cpu->zf = (cpu->r[in.ra] == cpu->r[in.b2]) ? 1 : 0;
-            cpu->pc += 4;
-        case OP_JMP:
-            cpu->pc = u16_from_le(in.b2, in.b3);
-        case OP_JE:
-            cpu->pc = (cpu->zf == 1) ? cpu->pc = u16_from_le(in.b2, in.b3) : cpu->pc + 4;
-        case OP_JNE:
-            cpu->pc = (cpu->zf == 0) ? cpu->pc = u16_from_le(in.b2, in.b3) : cpu->pc + 4;
-        case OP_PUSHW:
-            cpu->sp -= 2;
-            mem_write16(cpu->sp, cpu->r[in.ra]);
-            cpu->pc += 4;
-        case OP_POPW:
-            cpu->r[in.ra] = mem_read16(cpu->sp);
-            cpu->sp += 2;
-            cpu->zf = (cpu->r[in.ra] == 0) ? 1 : 0;
-            cpu->pc += 4;
-        case OP_CALL:
-            cpu->sp -= 2;
-            mem_write16(cpu->sp, cpu->pc + 4);
-            cpu->pc = u16_from_le(in.b2, in.b3);
-        case OP_RET:
-            cpu->pc = mem_read16(cpu->sp);
-            cpu->sp += 2;
-        case OP_HALT:
-            cpu->halted = 1;
-        case OP_MRMOVB:
-            cpu->r[in.ra] = io_read8(u16_from_le(in.b2, in.b3));
-        case OP_RMMOVB:
-            io_write8(u16_from_le(in.b2, in.b3), mem_read8(cpu->r[in.ra]));
-        case OP_MRMOVBR:
-            cpu->r[in.ra] = io_read8(cpu->r[in.b2]);
-        case OP_RMMOVBR:
-            io_write8(cpu->r[in.b2], mem_read8(cpu->r[in.ra]));
-        case OP_MRMOVW:
-            cpu->r[in.ra] = mem_read16(u16_from_le(in.b2, in.b3));
-        case OP_RMMOVW:
-            mem_write16(u16_from_le(in.b2, in.b3), cpu->r[in.ra]);
-        default:
-            break;
-    }
+  switch (in.op) {
+  case OP_IRMOVW:
+    cpu->r[in.ra] = u16_from_le(in.b2, in.b3);
+    cpu->zf = (cpu->r[in.ra] == 0) ? 1 : 0;
+    cpu->pc += 4;
+    break;
+  case OP_RRMOVW:
+    uint8_t rb = in.b2;
+    cpu->r[in.ra] = cpu->r[rb];
+    cpu->zf = (cpu->r[in.ra] == 0) ? 1 : 0;
+    cpu->pc += 4;
+    break;
+  case OP_IRMOVB:
+    cpu->r[in.ra] = in.b3;
+    cpu->zf = (cpu->r[in.ra] == 0) ? 1 : 0;
+    cpu->pc += 4;
+    break;
+  case OP_ADDW:
+    rb = in.b2;
+    cpu->r[rb] = cpu->r[in.ra] + cpu->r[rb];
+    cpu->zf = (cpu->r[rb] == 0) ? 1 : 0;
+    cpu->pc += 4;
+    break;
+  case OP_SUBW:
+    rb = in.b2;
+    cpu->r[rb] = cpu->r[rb] - cpu->r[in.ra];
+    cpu->zf = (cpu->r[rb] == 0) ? 1 : 0;
+    cpu->pc += 4;
+    break;
+  case OP_CMPW:
+    cpu->zf = (cpu->r[in.ra] == cpu->r[in.b2]) ? 1 : 0;
+    cpu->pc += 4;
+    break;
+  case OP_JMP:
+    cpu->pc = u16_from_le(in.b2, in.b3);
+    break;
+  case OP_JE:
+    cpu->pc =
+        (cpu->zf == 1) ? cpu->pc = u16_from_le(in.b2, in.b3) : cpu->pc + 4;
+    break;
+  case OP_JNE:
+    cpu->pc =
+        (cpu->zf == 0) ? cpu->pc = u16_from_le(in.b2, in.b3) : cpu->pc + 4;
+    break;
+  case OP_PUSHW:
+    cpu->sp -= 2;
+    mem_write16(cpu->sp, cpu->r[in.ra]);
+    cpu->pc += 4;
+    break;
+  case OP_POPW:
+    cpu->r[in.ra] = mem_read16(cpu->sp);
+    cpu->sp += 2;
+    cpu->zf = (cpu->r[in.ra] == 0) ? 1 : 0;
+    cpu->pc += 4;
+    break;
+  case OP_CALL:
+    cpu->sp -= 2;
+    mem_write16(cpu->sp, cpu->pc + 4);
+    cpu->pc = u16_from_le(in.b2, in.b3);
+    break;
+  case OP_RET:
+    cpu->pc = mem_read16(cpu->sp);
+    cpu->sp += 2;
+    break;
+  case OP_HALT:
+    cpu->halted = 1;
+    break;
+  case OP_MRMOVB:
+    if (u16_from_le(in.b2, in.b3) >= IO_START)
+      cpu->r[in.ra] = io_read8(u16_from_le(in.b2, in.b3));
+    else
+      cpu->r[in.ra] = mem_read8(u16_from_le(in.b2, in.b3));
+    cpu->pc += 4;
+    break;
+  case OP_RMMOVB:
+    if (u16_from_le(in.b2, in.b3) >= IO_START)
+      io_write8(u16_from_le(in.b2, in.b3), (uint8_t)(cpu->r[in.ra] & 0xFF));
+    else
+      mem_write8(u16_from_le(in.b2, in.b3), (uint8_t)(cpu->r[in.ra] & 0xFF));
+    cpu->pc += 4;
+    break;
+  case OP_MRMOVBR:
+    if (cpu->r[in.b2] >= IO_START)
+      cpu->r[in.ra] = io_read8(cpu->r[in.b2]);
+    else
+      cpu->r[in.ra] = mem_read8(cpu->r[in.b2]);
+    cpu->pc += 4;
+    break;
+  case OP_RMMOVBR:
+    if (cpu->r[in.b2] >= IO_START)
+      io_write8(cpu->r[in.b2], (uint8_t)(cpu->r[in.ra] & 0xFF));
+    else
+      mem_write8(cpu->r[in.b2], (uint8_t)(cpu->r[in.ra] & 0xFF));
+    cpu->pc += 4;
+    break;
+  case OP_MRMOVW:
+    cpu->r[in.ra] = mem_read16(u16_from_le(in.b2, in.b3));
+    cpu->pc += 4;
+    break;
+  case OP_RMMOVW:
+    mem_write16(u16_from_le(in.b2, in.b3), cpu->r[in.ra]);
+    cpu->pc += 4;
+    break;
+  case OP_INC:
+    cpu->r[in.ra] = cpu->r[in.ra] + 1;
+    cpu->zf = (cpu->r[in.ra] == 0) ? 1 : 0;
+    cpu->pc += 4;
+    break;
+  case OP_DEC:
+    cpu->r[in.ra] = cpu->r[in.ra] - 1;
+    cpu->zf = (cpu->r[in.ra] == 0) ? 1 : 0;
+    cpu->pc += 4;
+    break;
+  case OP_CLR:
+    cpu->r[in.ra] = 0;
+    cpu->zf = 1;
+    cpu->pc += 4;
+    break;
+  case OP_OUTC:
+    putchar(cpu->r[in.ra] & 0xFF);
+    cpu->pc += 4;
+    break;
+  default:
+    break;
+  }
 }
 
 static void cpu_run(cpu_t *cpu, int debug) {
-    while (!cpu->halted) {
-        cpu_step(cpu, debug);
-        if (cpu->pc >= MEM_SIZE && !cpu->halted) die("PC out of bounds");
-    }
+  while (!cpu->halted) {
+    cpu_step(cpu, debug);
+    if (cpu->pc >= MEM_SIZE && !cpu->halted)
+      die("PC out of bounds");
+  }
 }
 
 /* =========================
    Program loader (provided)
    ========================= */
 static void mem_clear(void) {
-    for (int i = 0; i < MEM_SIZE; i++) memory[i] = 0;
+  for (int i = 0; i < MEM_SIZE; i++)
+    memory[i] = 0;
 }
 
 static void load_program(const char *path) {
-    FILE *f = fopen(path, "rb");
-    if (!f) die("Could not open program file");
+  FILE *f = fopen(path, "rb");
+  if (!f)
+    die("Could not open program file");
 
-    int c;
-    int addr = 0;
-    while ((c = fgetc(f)) != EOF) {
-        if (addr >= MEM_SIZE) die("Program too large for memory");
-        memory[addr++] = (uint8_t)c;
-    }
-    fclose(f);
+  int c;
+  int addr = 0;
+  while ((c = fgetc(f)) != EOF) {
+    if (addr >= MEM_SIZE)
+      die("Program too large for memory");
+    memory[addr++] = (uint8_t)c;
+  }
+  fclose(f);
 }
 
 /* =========================
    CLI (provided)
    ========================= */
 static void usage(void) {
-    printf("Usage:\n");
-    printf("  ./quack run [--debug] [--script \"KEYS\"] <program.duck>\n");
+  printf("Usage:\n");
+  printf("  ./quack run [--debug] [--script \"KEYS\"] <program.duck>\n");
 }
 
 int main(int argc, char **argv) {
-    if (argc < 3) { usage(); return 1; }
-    if (strcmp(argv[1], "run") != 0) { usage(); return 1; }
+  if (argc < 3) {
+    usage();
+    return 1;
+  }
+  if (strcmp(argv[1], "run") != 0) {
+    usage();
+    return 1;
+  }
 
-    int debug = 0;
-    const char *script = NULL;
-    const char *path = NULL;
+  int debug = 0;
+  const char *script = NULL;
+  const char *path = NULL;
 
-    for (int i = 2; i < argc; i++) {
-        if (strcmp(argv[i], "--debug") == 0) debug = 1;
-        else if (strcmp(argv[i], "--script") == 0 && i + 1 < argc) script = argv[++i];
-        else path = argv[i];
-    }
+  for (int i = 2; i < argc; i++) {
+    if (strcmp(argv[i], "--debug") == 0)
+      debug = 1;
+    else if (strcmp(argv[i], "--script") == 0 && i + 1 < argc)
+      script = argv[++i];
+    else
+      path = argv[i];
+  }
 
-    if (!path) { usage(); return 1; }
+  if (!path) {
+    usage();
+    return 1;
+  }
 
-    mem_clear();
-    io_init();
-    if (script) io_set_script(script);
+  mem_clear();
+  io_init();
+  if (script)
+    io_set_script(script);
 
-    if (!script && strstr(path, "maze") != NULL) {
-        printf("Maze input: type W/A/S/D/Q (or lowercase) and press Enter. Or use --script.\n");
-    }
+  if (!script && strstr(path, "maze") != NULL) {
+    printf("Maze input: type W/A/S/D/Q (or lowercase) and press Enter. Or use "
+           "--script.\n");
+  }
 
-    load_program(path);
+  load_program(path);
 
-    cpu_t cpu;
-    cpu_reset(&cpu);
+  cpu_t cpu;
+  cpu_reset(&cpu);
 
-    cpu_run(&cpu, debug);
+  cpu_run(&cpu, debug);
 
-    printf("\nHALT\n");
-    printf("R0(final)=%04X\n", cpu.r[0]);
-    return 0;
+  printf("\nHALT\n");
+  printf("R0(final)=%04X\n", cpu.r[0]);
+  return 0;
 }
